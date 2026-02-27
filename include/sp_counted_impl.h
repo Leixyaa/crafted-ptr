@@ -1,6 +1,10 @@
 #ifndef MY_SP_COUNTED_IMPL_HPP_
 #define MY_SP_COUNTED_IMPL_HPP_
 
+#include <new>         // for placement new
+#include <type_traits>  //  for aligned_storage
+#include <utility>      //  for forward
+
 #include "sp_counted_base.h"
 
 namespace my {
@@ -67,6 +71,61 @@ class SpCountedImplPointerDeleter : public SpCountedBase {
 
   void Dispose() noexcept override { deleter_(ptr_); }
 };
+
+// ============================================================================
+// SpCountedImplPdi: Inplace 存储实现(第 6 天新增!)
+// ============================================================================
+// 用于 make_shared:对象内联存储在控制块中
+// "pdi" = pointer + deleter + inplace
+
+template <typename T> 
+class SpCountedImplPdi : public SpCountedBase {
+ private:
+  //  使用 aligned_storage 存储对象
+  // 这是原始内存,尚未构造对象
+  typename std::aligned_storage<sizeof(T), alignof(T)>::type storage_;
+
+  SpCountedImplPdi(const SpCountedImplPdi&) = delete;
+  SpCountedImplPdi& operator= (const SpCountedImplPdi&) = delete;
+
+ public:
+  // ------------------------------------------------------------------------
+  // 构造函数:使用 placement new 构造对象
+  // ------------------------------------------------------------------------
+  
+  template<typename... Args>
+  explicit SpCountedImplPdi(Args&&... args) {
+    ::new(static_cast<void*>(&storage_)) T(std::forward<Args>(args)...);
+    // 注意:
+    // 1. ::new 是 placement new
+    // 2. static_cast<void*> 确保正确的地址
+    // 3. Args&& + std::forward 完美转发参数
+  }
+  
+  // 获取对象指针
+  T* GetPoint() noexcept {
+    // 将 storage_ 的地址转换为 T*
+    return reinterpret_cast<T*>(&storage_);
+  }
+
+  // 兼容 SharedCount::GetInplacePointer() 的命名
+  T* get_pointer() noexcept { return GetPoint(); }
+
+  // ------------------------------------------------------------------------
+  // 实现虚函数
+  // ------------------------------------------------------------------------
+    
+  // 释放对象:只调用析构函数,不释放内存
+  void Dispose() noexcept override {
+    // 显式调用析构函数
+    GetPoint()-> ~T();
+    // storage_ 的内存在 destroy() 时才释放
+  }
+
+  // destroy() 使用基类默认实现:delete this
+
+};
+
 
 }  // namespace detail
 }  // namespace my

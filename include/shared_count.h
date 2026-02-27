@@ -17,6 +17,14 @@ class WeakPtr;
 
 namespace detail {
 
+//  标签类型:表示 inplace 构造
+template<typename T>
+struct sp_inplace_tag {};
+
+// 用于区分构造函数类型的内部标签
+struct sp_deleter_tag {};
+
+
 class SharedCount;
 
 // ============================================================================
@@ -121,11 +129,22 @@ class SharedCount {
   }
 
   template <typename P, typename D>
-  explicit SharedCount(P ptr, D deleter) : control_block_(nullptr) {
+  explicit SharedCount(sp_deleter_tag, P ptr, D deleter) : control_block_(nullptr) {
     if (ptr) {
       control_block_ = new SpCountedImplPointerDeleter<P, D>(ptr, deleter);
     }
   }
+
+  //  Inplace 构造(用于 make_shared)
+  // 使用 SFINAE 确保只匹配 sp_inplace_tag
+  template <typename T, typename... Args> 
+  explicit SharedCount(sp_inplace_tag<T> tag, Args&&... args) 
+    : control_block_(nullptr) {
+      (void) tag; // 避免未使用警告
+      typedef SpCountedImplPdi<T> ImplType;
+      control_block_ = new ImplType(std::forward<Args>(args)...);
+    }
+
 
   SharedCount(const SharedCount& other) noexcept
       : control_block_(other.control_block_) {
@@ -147,6 +166,14 @@ class SharedCount {
   // move ctor
   SharedCount(SharedCount&& other) noexcept : control_block_(other.control_block_) {
     other.control_block_ = nullptr;
+  }
+
+  // 获取 inplace 对象指针
+  template <typename T> 
+  T* GetInplacePointer() noexcept {
+    typedef SpCountedImplPdi<T> ImplType;
+    ImplType* point = static_cast<ImplType*>(control_block_);
+    return point ? point->get_pointer() : nullptr;
   }
 
   ~SharedCount() noexcept {

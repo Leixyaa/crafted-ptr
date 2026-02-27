@@ -37,7 +37,8 @@ class SharedPtr {
   explicit SharedPtr(Y* ptr) : ptr_(ptr), count_(ptr) {}
 
   template <typename Y, typename D>
-  explicit SharedPtr(Y* ptr, D deleter) : ptr_(ptr), count_(ptr, deleter) {}
+  explicit SharedPtr(Y* ptr, D deleter) 
+      : ptr_(ptr), count_(detail::sp_deleter_tag{}, ptr, deleter) {}
 
   SharedPtr(const SharedPtr& other) noexcept : ptr_(other.ptr_), count_(other.count_) {
     // std::cout << "11" << std::endl;
@@ -49,7 +50,7 @@ class SharedPtr {
     // std::cout << "22" << std::endl;
   }
 
-  //  新增:从 weak_ptr 构造(用于 lock())
+  //  从 weak_ptr 构造(用于 lock())
   template <typename Y>
   SharedPtr(const WeakPtr<Y>& other, detail::SpNothrowTag) noexcept
       : ptr_(nullptr), count_(other.count_) {
@@ -61,6 +62,15 @@ class SharedPtr {
       ptr_ = other.ptr_;  //  只有在成功时才设置指针
     }
   }
+
+  // 从 inplace 控制块构造(用于 make_shared)
+  template <typename Y>
+  SharedPtr(detail::sp_inplace_tag<Y>, detail::SharedCount const& control_block) noexcept
+      : ptr_(nullptr), count_(control_block) {
+        if (!count_.empty()) {
+          ptr_ = const_cast<detail::SharedCount&> (control_block).template GetInplacePointer<Y>();
+        } 
+      }
 
   SharedPtr(SharedPtr&& other) noexcept
       : ptr_(other.ptr_), count_(std::move(other.count_)) {
