@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <type_traits>
 #include <utility>
+#include <functional>
 
 #include "shared_count.h"
 
@@ -32,6 +33,8 @@ class SharedPtr {
   // ------------------------------------------------------------------------
 
   SharedPtr() noexcept : ptr_(nullptr), count_() {}
+
+  SharedPtr(std::nullptr_t) noexcept : ptr_(nullptr), count_() {}
 
   template <typename Y>
   explicit SharedPtr(Y* ptr) : ptr_(ptr), count_(ptr) {}
@@ -72,6 +75,14 @@ class SharedPtr {
         } 
       }
 
+  // 别名构造函数
+  template <typename Y> 
+  SharedPtr(const SharedPtr<Y>& other, element_type* ptr) 
+      : ptr_(ptr), count_(other.count_){
+        // 存储 p,但共享 r 的控制块
+        // 用于类型转换和访问成员
+      };
+
   SharedPtr(SharedPtr&& other) noexcept
       : ptr_(other.ptr_), count_(std::move(other.count_)) {
     other.ptr_ = nullptr;
@@ -101,6 +112,12 @@ class SharedPtr {
       // 复用你现有 Swap，保证最小改动且安全
       SharedPtr(std::move(other)).Swap(*this);
     }
+    return *this;
+  }
+
+  // nullptr 赋值
+  SharedPtr& operator=(std::nullptr_t) noexcept {
+    Reset();
     return *this;
   }
 
@@ -157,8 +174,24 @@ class SharedPtr {
   friend class SharedPtr;
   template <typename Y>
   friend class WeakPtr;  //  友元
+
+  // 类型转换需要访问私有成员
+  template <typename T1, typename U1>
+  friend SharedPtr<T1> static_pointer_cast(const SharedPtr<U1>&) noexcept;
+  
+  template <typename T1, typename U1>
+  friend SharedPtr<T1> dynamic_pointer_cast(const SharedPtr<U1>&) noexcept;
+
+  template <typename T1, typename U1>
+  friend SharedPtr<T1> const_pointer_cast(const SharedPtr<U1>&) noexcept;
+
 };
 
+// ============================================================================
+// 比较运算符
+// ============================================================================
+
+// 相等比较
 template <typename T, typename U>
 bool operator==(const SharedPtr<T>& a, const SharedPtr<U>& b) noexcept {
   return a.get() == b.get();
@@ -169,6 +202,69 @@ bool operator!=(const SharedPtr<T>& a, const SharedPtr<U>& b) noexcept {
   return !(a == b);
 }
 
+// nullptr 比较
+template <typename T>
+bool operator==(const SharedPtr<T>& a, std::nullptr_t) noexcept {
+  return !a;
+}
+
+template <typename T>
+bool operator==(std::nullptr_t, const SharedPtr<T>& a) noexcept {
+  return !a;
+}
+
+template <typename T>
+bool operator!=(const SharedPtr<T>& a, std::nullptr_t) noexcept {
+  return static_cast<bool>(a);
+}
+
+template <typename T>
+bool operator!=(std::nullptr_t, const SharedPtr<T>& a) noexcept {
+  return static_cast<bool>(a);
+}
+
+// 关系比较(用于关联容器)
+template <typename T,typename U>
+bool operator<(const SharedPtr<T>& a, const SharedPtr<U>& b) noexcept {
+  typedef typename std::common_type<T*, U*>::type common_type;
+  return std::less<common_type>()(a.get(), b.get());
+}
+
+template <typename T, typename U>
+bool operator>(const SharedPtr<T>& a, const SharedPtr<U>& b) noexcept {
+  return b < a;
+}
+
+template <typename T, typename U>
+bool operator<=(const SharedPtr<T>& a, const SharedPtr<U>& b) noexcept {
+  return !(b < a);
+}
+
+template <typename T, typename U>
+bool operator>=(const SharedPtr<T>& a, const SharedPtr<U>& b) noexcept {
+  return !(a < b);
+}
+
+// ============================================================================
+// std::swap 特化
+// ============================================================================
+
+template <typename T>
+void swap(SharedPtr<T>& a, SharedPtr<T>& b) noexcept {
+  a.Swap(b);
+}
+
 }  // namespace my
+
+// ============================================================================
+// std::swap 特化(放在 std 命名空间)
+// ============================================================================
+
+namespace std {
+  template <typename T>
+  void swap(my::SharedPtr<T>& a, my::SharedPtr<T>& b) noexcept {
+    a.Swap(b);
+  }
+}
 
 #endif  // MY_MY_SHARED_PTR_HPP_

@@ -4,18 +4,25 @@ project(MySharedPtr_Day6)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 优化选项
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+# 发布版本配置
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# 编译器特定优化
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG -march=native")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /DNDEBUG")
+endif()
 
 # 启用线程支持
 find_package(Threads REQUIRED)
 
 include_directories(include)
 
-# make_shared 功能测试
-add_executable(test_make_shared test/test_make_shared.cc)
-target_link_libraries(test_make_shared Threads::Threads)
+add_executable(test_complete test/test_complete.cc)
+target_link_libraries(test_complete Threads::Threads)
 
-# 性能对比测试
-# add_executable(benchmark test/benchmark.cc)
-# target_link_libraries(benchmark Threads::Threads)
+add_executable(benchmark test/benchmark.cc)
+target_link_libraries(benchmark Threads::Threads)
